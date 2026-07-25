@@ -42,11 +42,20 @@ class InspireBlurWrapper extends StatefulWidget {
   final InspireBlurWrapperBuilder builder;
   final Object? layoutInvalidationKey;
 
+  /// Whether to track the widget's global bounds on screen.
+  ///
+  /// Bounds tracking rebuilds the [builder] subtree whenever the widget
+  /// moves on screen (e.g. on every scroll frame). Only enable it when
+  /// [InspireBlurWrapperData.globalBounds] is actually consumed, otherwise
+  /// it forces expensive re-renders of the blur effect for no benefit.
+  final bool observeBounds;
+
   const InspireBlurWrapper({
     super.key,
     required this.config,
     required this.builder,
     required this.layoutInvalidationKey,
+    this.observeBounds = true,
   });
 
   @override
@@ -103,6 +112,16 @@ class _InspireBlurWrapperState extends State<InspireBlurWrapper> {
 
   @override
   Widget build(BuildContext context) {
+    if (!widget.observeBounds) {
+      return widget.builder(
+        context,
+        InspireBlurWrapperData(
+          blurGradientMap: _blurDistributionImage?.image,
+          globalBounds: null,
+        ),
+      );
+    }
+
     return InspireBoundsObserver(
       layoutInvalidationKey: widget.layoutInvalidationKey,
       builder: (context, boundsNotifier) => ValueListenableBuilder(

@@ -34,3 +34,7 @@ flutter:
   shaders:
     - shaders/inspire_blur_backdrop.frag
     - shaders/inspire_blur_child.frag
+
+    # Pre-optimization shader kept only for the performance regression
+    # benchmark in test/blur_shader_benchmark_test.dart.
+    - test/shaders/inspire_blur_child_legacy.frag

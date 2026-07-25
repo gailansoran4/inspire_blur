@@ -1,13 +1,9 @@
 #version 460 core
 #include <flutter/runtime_effect.glsl>
 
-// Maximum number of taps per blur side. Must be a compile-time constant to
-// satisfy SkSL loop constraints.
-//
-// When the blur radius exceeds the tap budget, the sampling stride is
-// stretched so the full radius is still covered at a bounded per-pixel cost.
-#define MAX_TAPS 16
-#define MAX_TAPS_F 16.0
+// Maximum blur radius. Must be a compile-time constant to satisfy SkSL loop constraints.
+#define MAX_RADIUS 64
+#define MAX_RADIUS_F 64.0
 
 // Minimum sigma below which blur is negligible and skipped.
 #define MIN_SIGMA 1.0e-2
@@ -196,59 +192,54 @@ void main() {
     return;
   }
 
+  float invTwoSigma2 = 1.0 / (2.0 * sigma * sigma);
+
   // Blur radius is approximated as 3 * sigma (~99% of Gaussian contribution).
-  float radius = 3.0 * sigma;
+  float radius = ceil(3.0 * sigma);
+  float radiusClamped = min(radius, MAX_RADIUS_F);
 
-  // Stretch the sampling stride when the radius exceeds the tap budget.
-  // Fractional tap positions are smoothed for free by bilinear filtering.
-  float stride = max(1.0, radius / MAX_TAPS_F);
-  float taps = min(ceil(radius / stride), MAX_TAPS_F);
+  vec2 texelStep = texel * u_blur_direction;
 
-  // Incremental Gaussian weights (GPU Gems 3, ch. 40) — avoids evaluating
-  // exp() for every tap.
-  vec3 g;
-  g.x = 1.0;
-  g.y = exp(-0.5 * stride * stride / (sigma * sigma));
-  g.z = g.y * g.y;
+  float totalWeight = 0.0;
+  vec4 totalColor = vec4(0.0);
 
-  vec2 texelStep = texel * u_blur_direction * stride;
+  for (int i = 0; i <= MAX_RADIUS; i++) {
+    float x = float(i);
+    if (x > radiusClamped) break;
+    
+    float weight = exp(-(x * x) * invTwoSigma2);
 
-  // Center tap (weight 1.0).
-  float totalWeight = 1.0;
-  vec4 totalColor = bg;
+    if (i == 0) {
+      totalColor += bg * weight;
+      totalWeight += weight;
+    } else {
+      vec2 offset = texelStep * x;
 
-  for (int i = 1; i <= MAX_TAPS; i++) {
-    if (float(i) > taps) break;
+      vec2 uvRaw1 = uv + offset;
+      vec2 uvRaw2 = uv - offset;
 
-    g.xy *= g.yz;
-    float weight = g.x;
+      // Check if inside bounds
+      float mask1 =
+          step(0.0, uvRaw1.x) * step(uvRaw1.x, 1.0) *
+          step(0.0, uvRaw1.y) * step(uvRaw1.y, 1.0);
 
-    vec2 offset = texelStep * float(i);
+      float mask2 =
+          step(0.0, uvRaw2.x) * step(uvRaw2.x, 1.0) *
+          step(0.0, uvRaw2.y) * step(uvRaw2.y, 1.0);
 
-    vec2 uvRaw1 = uv + offset;
-    vec2 uvRaw2 = uv - offset;
+      // Clamp only for safe sampling
+      vec2 uv1 = clamp(uvRaw1, 0.0, 1.0);
+      vec2 uv2 = clamp(uvRaw2, 0.0, 1.0);
 
-    // Check if inside bounds
-    float mask1 =
-        step(0.0, uvRaw1.x) * step(uvRaw1.x, 1.0) *
-        step(0.0, uvRaw1.y) * step(uvRaw1.y, 1.0);
+      vec4 c1 = texture(u_texture, uv1);
+      vec4 c2 = texture(u_texture, uv2);
 
-    float mask2 =
-        step(0.0, uvRaw2.x) * step(uvRaw2.x, 1.0) *
-        step(0.0, uvRaw2.y) * step(uvRaw2.y, 1.0);
+      float w1 = weight * mask1;
+      float w2 = weight * mask2;
 
-    // Clamp only for safe sampling
-    vec2 uv1 = clamp(uvRaw1, 0.0, 1.0);
-    vec2 uv2 = clamp(uvRaw2, 0.0, 1.0);
-
-    vec4 c1 = texture(u_texture, uv1);
-    vec4 c2 = texture(u_texture, uv2);
-
-    float w1 = weight * mask1;
-    float w2 = weight * mask2;
-
-    totalColor += c1 * w1 + c2 * w2;
-    totalWeight += w1 + w2;
+      totalColor += c1 * w1 + c2 * w2;
+      totalWeight += w1 + w2;
+    }
   }
 
   frag_color = totalColor / max(totalWeight, MIN_WEIGHT);

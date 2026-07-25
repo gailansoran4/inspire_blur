@@ -308,6 +308,9 @@ class _BlurFilterRenderObject extends RenderProxyBox {
   }
 
   @override
+  bool get alwaysNeedsCompositing => child != null;
+
+  @override
   void paint(PaintingContext context, ui.Offset offset) {
     final childValue = child;
     if (childValue == null) return;
@@ -334,13 +337,17 @@ class _BlurFilterRenderObject extends RenderProxyBox {
       _imageFilter = ui.ImageFilter.shader(_shader);
     }
 
-    final ImageFilterLayer filterLayer = ImageFilterLayer(
-      imageFilter: _imageFilter,
-    );
+    // Reuse the retained layer (like Flutter's own ImageFiltered) so the
+    // engine can cache the filtered output when nothing changed.
+    final ImageFilterLayer filterLayer =
+        (layer as ImageFilterLayer?) ?? ImageFilterLayer();
+    filterLayer.imageFilter = _imageFilter;
 
     context.pushLayer(filterLayer,
         (PaintingContext childContext, Offset childOffset) {
       childContext.paintChild(childValue, childOffset);
     }, offset);
+
+    layer = filterLayer;
   }
 }

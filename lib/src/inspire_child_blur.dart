@@ -86,6 +86,9 @@ class InspireChildBlur extends StatelessWidget {
     return InspireBlurWrapper(
       config: config,
       layoutInvalidationKey: layoutInvalidationKey,
+      // Child blur never consumes globalBounds — observing them would
+      // needlessly rebuild (and re-render) the blur on every scroll frame.
+      observeBounds: false,
       builder: (context, builderData) {
         final gradientMap = builderData.blurGradientMap;
 
