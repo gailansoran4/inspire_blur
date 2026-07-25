@@ -89,9 +89,13 @@ extension BlurDistributionExtension on BlurDistribution {
             width: size,
             height: size,
           ),
+        // Axis-aligned directional gradients vary along a single axis, so the
+        // other axis is collapsed to one texel. This produces an identical
+        // sampling result while cutting map generation work and GPU texture
+        // memory by ~1000x (e.g. 1024x1024 -> 1x1024).
         DirectionalDistribution e => DirectionalDistributionMap(
-            width: size,
-            height: size,
+            width: e.begin.x == e.end.x ? 1 : size,
+            height: e.begin.y == e.end.y ? 1 : size,
             begin: e.begin,
             end: e.end,
             values: e.values,
